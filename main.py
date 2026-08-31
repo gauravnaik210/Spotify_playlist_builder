@@ -30,19 +30,48 @@
 # )
 # user_id = sp.current_user()["id"]
 
-from bs4 import BeautifulSoup
+import os
+
 import requests
 import spotipy
-from spotipy.oauth2 import SpotifyClientCredentials
-import pprint
+from bs4 import BeautifulSoup
+from dotenv import load_dotenv
+from spotipy.cache_handler import MemoryCacheHandler
+
+load_dotenv()
 
 # =============== Top 100 Billboard Web scraping =========
 URL_billboard = "https://www.billboard.com/charts/hot-100/"
+
+# =============== Spotify API setup =======================
+spotify_client_id = os.getenv("SPOTIFY_CLIENT_ID")
+spotify_client_secret = os.getenv("SPOTIFY_CLIENT_SECRET")
+redirect = "http://example.com"
+
+if not spotify_client_id or not spotify_client_secret:
+    raise RuntimeError(
+        "Missing Spotify credentials. Set SPOTIFY_CLIENT_ID and SPOTIFY_CLIENT_SECRET "
+        "in your environment or .env file."
+    )
+
+spotify_auth = spotipy.oauth2.SpotifyOAuth(
+    client_id=spotify_client_id,
+    client_secret=spotify_client_secret,
+    redirect_uri=redirect,
+    scope="playlist-modify-private",
+    cache_handler=MemoryCacheHandler(),
+    open_browser=False,
+)
+
+sp = spotipy.Spotify(oauth_manager=spotify_auth)
+
+user_id = sp.current_user()["id"]
 
 date = input("What year do you want to travel to? Type the date in this format, YYYY-MM-DD: ")
 year = date[:4]
 
 response = requests.get(f"{URL_billboard}{date}/")
+response.raise_for_status()
 webpage = response.text
 
 soup = BeautifulSoup(webpage, "html.parser")
@@ -65,26 +94,6 @@ artist_names = [artist.split(" Featuring")[0].split(" Duet")[0].replace("Ke$ha",
                 if 'ENTRY' not in artist
                 ]
 
-# # ==================== Spotify API =======================
-
-spotify_client_id = "CLIENT_ID_TO_BE_USE"
-spotify_client_secret = "CLIENT_SECRET_TO_BE_USE"
-redirect = "http://example.com"
-
-
-spotify_auth = spotipy.oauth2.SpotifyOAuth(client_id=spotify_client_id,
-                                           client_secret=spotify_client_secret,
-                                           redirect_uri=redirect,
-                                           scope="playlist-modify-private",
-                                           cache_path="token.txt")
-
-# spotify.get_access_token()
-
-sp = spotipy.Spotify(oauth_manager=spotify_auth)
-
-user_name = sp.current_user()["display_name"]
-user_id = sp.current_user()["id"]
-
 song_urls = []
 for song, artist in zip(song_names, artist_names):
     items = sp.search(q=f"track: {song} artist: {artist}", type="track")["tracks"]["items"]
@@ -92,5 +101,4 @@ for song, artist in zip(song_names, artist_names):
         song_urls.append(items[0]["uri"])
 
 playlist_id = sp.user_playlist_create(user=user_id, name=f"{date} Top 100 Popular", public=False)["id"]
-
 sp.playlist_add_items(playlist_id=playlist_id, items=song_urls)
